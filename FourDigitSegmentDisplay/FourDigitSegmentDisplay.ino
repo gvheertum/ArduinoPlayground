@@ -7,6 +7,8 @@
 
 // Working: Put 5v on the digit to show and negative the segments
 
+// Cycle interval for multi-number displaying
+const int CYCLE_INTERVAL = 100;
 
 // DIGIT SETUP
 int D1 = 2;
@@ -26,6 +28,7 @@ int S_MIDDLE = 9;
 int segments[] = { S_TOP, S_TOP_LEFT, S_TOP_RIGHT, S_BOTTOM, S_BOTTOM_LEFT, S_BOTTOM_RIGHT, S_MIDDLE };
 
 // NUMBER LAYOUTS
+int layout_[7] = {}; //empty layout
 int layout_0[7] = { S_TOP, S_TOP_LEFT, S_TOP_RIGHT, S_BOTTOM, S_BOTTOM_LEFT, S_BOTTOM_RIGHT };
 int layout_1[7] = { S_TOP_RIGHT, S_BOTTOM_RIGHT };
 int layout_2[7] = { S_TOP, S_TOP_RIGHT, S_BOTTOM, S_BOTTOM_LEFT, S_MIDDLE };
@@ -36,39 +39,21 @@ int layout_6[7] = { S_TOP, S_TOP_LEFT, S_BOTTOM, S_BOTTOM_LEFT, S_BOTTOM_RIGHT, 
 int layout_7[7] = { S_TOP, S_TOP_RIGHT, S_BOTTOM_RIGHT };
 int layout_8[7] = { S_TOP, S_TOP_LEFT, S_TOP_RIGHT, S_BOTTOM, S_BOTTOM_LEFT, S_BOTTOM_RIGHT, S_MIDDLE };
 int layout_9[7] = { S_TOP, S_TOP_LEFT, S_TOP_RIGHT, S_BOTTOM,  S_BOTTOM_RIGHT, S_MIDDLE };
-int layout_fail[7] = { S_MIDDLE };
+int layout_fail[7] = { S_MIDDLE }; // Show a - as error
 
-#define len(x)       (sizeof(x) / sizeof(x[0]))
-
-void setup() {
-  
-  Serial.begin(9600);
-  
-  // Setup the digits and segments to be output elements
-  for(int i = 0; i < len(digits); i++)
-  {
-    if(digits[i] == 0) { continue; }
-    pinMode(digits[i], OUTPUT);
-  }
-
-  for(int i = 0; i < len(segments); i++)
-  {
-    if(segments[i] == 0) { continue; }  
-    pinMode(segments[i], OUTPUT);
-  }
-}
 
 struct SegmentData
 {
   int segments[7];
 };
 
-
+// Get the associated segments for a given number
 struct SegmentData getSegmentForNumber(int number)
 {
   SegmentData sd;
   switch(number)
   {
+    case -1: arrayCopy(layout_, sd.segments); break;
     case 0: arrayCopy(layout_0, sd.segments); break;
     case 1: arrayCopy(layout_1, sd.segments); break;
     case 2: arrayCopy(layout_2, sd.segments); break;
@@ -84,70 +69,85 @@ struct SegmentData getSegmentForNumber(int number)
   return sd;
 }
 
+
+
+#define len(x)       (sizeof(x) / sizeof(x[0]))
+
+void setup() 
+{
+  Serial.begin(9600);
+  configurePins();
+}
+
+// Setup the digits and segments to be output elements
+void configurePins()
+{
+  for(int i = 0; i < len(digits); i++)
+  {
+    if(digits[i] == 0) { continue; }
+    pinMode(digits[i], OUTPUT);
+  }
+
+  for(int i = 0; i < len(segments); i++)
+  {
+    if(segments[i] == 0) { continue; }  
+    pinMode(segments[i], OUTPUT);
+  }
+}
+
 void loop()
 {
-  /*for(int i = 0; i < 10; i++)
-  {
-    reset();
-    delay(200);
-    showDigitNumber(0, getSegmentForNumber(i), 0);
-    delay(200);
-    showDigitNumber(1, getSegmentForNumber(i), 0);
-    delay(200);
-    showDigitNumber(2, getSegmentForNumber(i), 0);
-    delay(200);
-    showDigitNumber(3, getSegmentForNumber(i), 1000); //Should keep it for at least 1000;
-    delay(1000);
-  }*/
-
   showMultiDigitNumber(1,2,3,4,1000);
   showMultiDigitNumber(8,8,8,8,1000);
-  showMultiDigitNumber(2,5,7,11,1000);
-  /*for(int i = 1; i < 1000000; i++)
-  {
-    reset();
-    lightSegments(i % 4, segments, len(segments));
-    //delayMicroseconds(20);
-  }*/
-  
+  showNumericValue(1234, true, 1000);
+  showNumericValue(1, true, 1000);
+  showNumericValue(1, false, 1000);
+  showNumericValue(20, false, 1000);
 }
 
-void reset()
+// Show a number on the display, this will use the showMultiDigitNumber after parsing the digits
+void showNumericValue(int number, bool showLeadingZero, int durationMs)
 {
-  setSerie(segments, len(segments), HIGH);
-  setSerie(digits, len(digits), LOW);
+  int d0 = number / 1000;
+  int d1 = (number % 1000) / 100;
+  int d2 = (number % 100) / 10;
+  int d3 = number % 10;
+  d0 = !showLeadingZero && d0 == 0 ? -1 : d0;
+  d1 = !showLeadingZero && d1 == 0 ? -1 : d1;
+  d2 = !showLeadingZero && d2 == 0 ? -1 : d2;
+
+  showMultiDigitNumber(d0,d1,d2,d3, durationMs);
 }
 
+// Show a multi-digit number. This is done by shortly cycling through the numbers for a couple of micro-seconds (our eyes won't notice ;))
 void showMultiDigitNumber(int nrIdx0, int nrIdx1, int nrIdx2, int nrIdx3, int durationMs)
 {
-  Serial.println("Showing multi");
   long durationUs = (long)1000 * (long)durationMs;
-  Serial.print(durationUs);
-  int sleep = 100;
   
   int idxLoop = 0;
   int nrs[] = { nrIdx0, nrIdx1, nrIdx2, nrIdx3 };
-  for(long i = 0; i < durationUs; i += sleep) 
+  for(long i = 0; i < durationUs; i += CYCLE_INTERVAL) 
   {
-    showDigitNumber(idxLoop, getSegmentForNumber(nrs[idxLoop]), sleep);
+    showDigitNumber(idxLoop, getSegmentForNumber(nrs[idxLoop]), CYCLE_INTERVAL);
     idxLoop = idxLoop > 3 ? 0 : idxLoop + 1;
   }  
 }
 
+// Show a single digit number on a given digit index (0 - 3)
 void showDigitNumber(int digitIdx, struct SegmentData segmentData, int durationUs) // Duration will set a minumum length for display and then reset it. If no time is set the number will be kept on 
 {
   int digitPin = digits[digitIdx];
 
   // Put HIGH on all segments "breaking" the flow and stopping the lighting
-  setSerie(segments, len(segments), HIGH);
+  setMultiPin(segments, len(segments), HIGH);
 
   // Put High on the input of the digit
   digitalWrite(digitPin, HIGH);
 
   // For all segements to be lit set LOW to have a current (lighting the element), assume length of 7
-  setSerie(segmentData.segments, 7, LOW);
+  setMultiPin(segmentData.segments, 7, LOW);
 
-  // Do we need to wait? (applicable for multi number situations)
+  // Do we need to wait? (applicable for multi number situations) If we waited we will perform the reset (otherwise the calling function should).
   if(durationUs > 0)
   {
     delayMicroseconds(durationUs);    
@@ -160,9 +160,13 @@ void showDigitNumber(int digitIdx, struct SegmentData segmentData, int durationU
 
 // HELPERS
 
+void reset()
+{
+  setMultiPin(segments, len(segments), HIGH);
+  setMultiPin(digits, len(digits), LOW);
+}
 
-
-void setSerie(int elements[], int count, int value) // :( Cannot get the length working right.... stupid C
+void setMultiPin(int elements[], int count, int value) // :( Cannot get the length working right.... stupid C
 {
   for(int i = 0; i < count; i++)
   {
